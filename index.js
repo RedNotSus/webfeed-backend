@@ -65,6 +65,8 @@ function extractMedia(data) {
 app.get("/api/feed", async (req, res) => {
   try {
     const feedUrl = process.env.REDDIT_FEED_URL;
+    const cookie = process.env.REDDIT_COOKIE; // Check for cookie in env
+
     if (!feedUrl)
       return res.status(500).json({ error: "Missing REDDIT_FEED_URL" });
 
@@ -75,7 +77,23 @@ app.get("/api/feed", async (req, res) => {
     urlObj.searchParams.append("limit", limit);
     if (afterToken) urlObj.searchParams.append("after", afterToken);
 
-    const response = await axios.get(urlObj.toString());
+    // Prepare Axios Configuration
+    let axiosConfig = {};
+
+    // If cookie exists, add headers to pretend to be a browser
+    if (cookie) {
+      axiosConfig = {
+        headers: {
+          Cookie: cookie,
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+      };
+    }
+
+    // Make request with or without headers
+    const response = await axios.get(urlObj.toString(), axiosConfig);
+
     const data = response.data.data;
 
     const cleanFeed = data.children.map((post) => {
@@ -95,7 +113,11 @@ app.get("/api/feed", async (req, res) => {
 
     res.json({ success: true, nextPageToken: data.after, data: cleanFeed });
   } catch (error) {
-    console.error("Feed Error:", error.message);
+    // Log more details if available
+    console.error(
+      "Feed Error:",
+      error.response ? error.response.status : error.message
+    );
     res.status(500).json({ error: "Failed to fetch feed" });
   }
 });
