@@ -3,12 +3,45 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 const path = require("path");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+app.use(express.json());
 app.use(express.static("public"));
+
+// --- Authentication ---
+
+app.post("/login", (req, res) => {
+  const { username, password } = req.body;
+  const adminUsername = process.env.ADMIN_USERNAME;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (username === adminUsername && password === adminPassword) {
+    const user = { name: username };
+    // Token expires in 24 hours (optional, but good practice)
+    const accessToken = jwt.sign(user, process.env.JWT_SECRET, {
+      expiresIn: "24h",
+    });
+    res.json({ accessToken: accessToken });
+  } else {
+    res.status(401).send("Username or password incorrect");
+  }
+});
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+  if (token == null) return res.sendStatus(401);
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+}
 
 // --- Helper: Extract Media ---
 function extractMedia(data) {
@@ -62,7 +95,7 @@ function extractMedia(data) {
 }
 
 // --- API Endpoint ---
-app.get("/api/feed", async (req, res) => {
+app.get("/api/feed", authenticateToken, async (req, res) => {
   try {
     const feedUrl = process.env.REDDIT_FEED_URL;
     const cookie = process.env.REDDIT_COOKIE; // Check for cookie in env
