@@ -4,15 +4,52 @@ const axios = require("axios");
 const cors = require("cors");
 const path = require("path");
 const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
+
+app.use(
+  cors({
+    origin: FRONTEND_ORIGIN,
+    credentials: true,
+  })
+);
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.static("public"));
 
 // --- Authentication ---
+
+const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "24h";
+const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || "30d";
+
+function getCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  };
+}
+
+function signAccessToken(user) {
+  if (!process.env.JWT_SECRET) throw new Error("Missing JWT_SECRET");
+  return jwt.sign(user, process.env.JWT_SECRET, {
+    expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+  });
+}
+
+function signRefreshToken(user) {
+  if (!process.env.JWT_REFRESH_SECRET)
+    throw new Error("Missing JWT_REFRESH_SECRET");
+  return jwt.sign(user, process.env.JWT_REFRESH_SECRET, {
+    expiresIn: REFRESH_TOKEN_EXPIRES_IN,
+  });
+}
 
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
@@ -21,14 +58,34 @@ app.post("/login", (req, res) => {
 
   if (username === adminUsername && password === adminPassword) {
     const user = { name: username };
-    // Token expires in 24 hours (optional, but good practice)
-    const accessToken = jwt.sign(user, process.env.JWT_SECRET, {
-      expiresIn: "24h",
-    });
-    res.json({ accessToken: accessToken });
+    const accessToken = signAccessToken(user);
+    const refreshToken = signRefreshToken(user);
+    res.cookie("refreshToken", refreshToken, getCookieOptions());
+    res.json({ accessToken });
   } else {
     res.status(401).send("Username or password incorrect");
   }
+});
+
+app.post("/refresh", (req, res) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+    if (!refreshToken) return res.sendStatus(401);
+
+    jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, (err, user) => {
+      if (err) return res.sendStatus(403);
+      const accessToken = signAccessToken({ name: user.name });
+      res.json({ accessToken });
+    });
+  } catch (error) {
+    console.error("Refresh Error:", error.message);
+    res.status(500).json({ error: "Failed to refresh token" });
+  }
+});
+
+app.post("/logout", (req, res) => {
+  res.clearCookie("refreshToken", getCookieOptions());
+  res.sendStatus(204);
 });
 
 function authenticateToken(req, res, next) {

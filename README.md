@@ -20,6 +20,11 @@ A simple Express backend that proxies Reddit feeds and provides authentication.
     ADMIN_USERNAME=admin
     ADMIN_PASSWORD=secretpassword
     JWT_SECRET=your_jwt_secret_key_here
+    JWT_REFRESH_SECRET=your_refresh_secret_key_here
+    FRONTEND_ORIGIN=http://localhost:5173
+    # Optional overrides
+    # ACCESS_TOKEN_EXPIRES_IN=24h
+    # REFRESH_TOKEN_EXPIRES_IN=30d
     ```
 
 ## API Documentation
@@ -64,3 +69,26 @@ Retrieve the Reddit feed. Requires authentication.
 ```bash
 curl -H "Authorization: Bearer <your_token>" http://localhost:3000/api/feed
 ```
+
+### 3. Refresh Access Token
+
+Mint a new access token using the httpOnly refresh cookie.
+
+- **URL:** `/refresh`
+- **Method:** `POST`
+- **Credentials:** required (cookie)
+
+**Response:**
+
+```json
+{
+  "accessToken": "..."
+}
+```
+
+### 4. Logout
+
+Clears the refresh cookie.
+
+- **URL:** `/logout`
+- **Method:** `POST`
